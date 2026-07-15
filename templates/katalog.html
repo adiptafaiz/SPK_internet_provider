@@ -1,0 +1,141 @@
+{% extends "layout.html" %}
+
+{% block content %}
+  <section class="glass rounded-2xl p-6 sm:p-8">
+    <p class="text-sm font-bold uppercase text-mint">Katalog & Filter</p>
+    <h1 class="mt-3 text-3xl font-black sm:text-5xl">Data Provider Internet</h1>
+    <p class="mt-4 max-w-3xl text-slate-300">
+      Halaman ini menampilkan data alternatif provider yang dipakai oleh model keputusan.
+      Gunakan filter sederhana untuk mengecek provider sesuai batas harga dan minimal kecepatan.
+    </p>
+
+    <form method="get" class="mt-6 grid gap-4 rounded-2xl bg-slate-950/60 p-4 ring-1 ring-white/10 md:grid-cols-4">
+      <label class="block">
+        <span class="text-sm font-semibold text-slate-300">Maksimal Harga</span>
+        <input name="max_price" value="{{ request.args.get('max_price', '') }}" type="number" placeholder="375000" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+      </label>
+      <label class="block">
+        <span class="text-sm font-semibold text-slate-300">Minimal Kecepatan</span>
+        <input name="min_speed" value="{{ request.args.get('min_speed', '') }}" type="number" placeholder="75" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+      </label>
+      <label class="block">
+        <span class="text-sm font-semibold text-slate-300">Urutkan</span>
+        <select name="sort_by" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon">
+          {% set sort_by = request.args.get('sort_by', 'name') %}
+          <option value="name" {{ "selected" if sort_by == "name" else "" }}>Nama</option>
+          <option value="price" {{ "selected" if sort_by == "price" else "" }}>Harga Termurah</option>
+          <option value="speed" {{ "selected" if sort_by == "speed" else "" }}>Kecepatan Tertinggi</option>
+          <option value="stability" {{ "selected" if sort_by == "stability" else "" }}>Stabilitas Tertinggi</option>
+        </select>
+      </label>
+      <div class="flex items-end gap-2">
+        <button class="w-full rounded-xl bg-mint px-4 py-3 font-extrabold text-slate-950">Filter</button>
+        <a href="{{ url_for('katalog') }}" class="rounded-xl bg-white/10 px-4 py-3 font-bold text-white">Reset</a>
+      </div>
+    </form>
+  </section>
+
+  <section class="glass mt-6 rounded-2xl p-6">
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+      <div>
+        <h2 class="text-xl font-extrabold">{{ "Edit Provider" if edit_provider else "Tambah Provider" }}</h2>
+        <p class="mt-1 text-sm text-slate-400">Data ini langsung dipakai oleh perhitungan ranking di dashboard.</p>
+      </div>
+      {% if edit_provider %}
+        <a href="{{ url_for('katalog') }}" class="rounded-xl bg-white/10 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/15">Batal Edit</a>
+      {% endif %}
+    </div>
+
+    <form method="post" action="{{ url_for('save_provider') }}" class="mt-5 rounded-2xl bg-slate-950/50 p-4 ring-1 ring-white/10">
+      <input type="hidden" name="provider_id" value="{{ edit_provider.id if edit_provider else '' }}" />
+      <div class="grid gap-4 lg:grid-cols-4">
+        <label class="block lg:col-span-2">
+          <span class="text-sm font-semibold text-slate-300">Nama Provider</span>
+          <input name="name" value="{{ edit_provider.name if edit_provider else '' }}" required placeholder="Nama provider" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-semibold text-slate-300">Harga Bulanan</span>
+          <input name="price_idr" value="{{ '%.0f'|format(edit_provider.price_idr) if edit_provider else '' }}" required min="0" type="number" placeholder="375000" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-semibold text-slate-300">Kecepatan Mbps</span>
+          <input name="speed_mbps" value="{{ '%.0f'|format(edit_provider.speed_mbps) if edit_provider else '' }}" required min="0" type="number" placeholder="100" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+      </div>
+
+      <div class="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+        <label class="block">
+          <span class="text-sm font-semibold text-slate-300">Stabilitas</span>
+          <input name="stability" value="{{ '%.0f'|format(edit_provider.stability) if edit_provider else '' }}" required min="0" max="100" type="number" placeholder="90" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-semibold text-slate-300">Layanan</span>
+          <input name="service" value="{{ '%.0f'|format(edit_provider.service) if edit_provider else '' }}" required min="0" max="100" type="number" placeholder="85" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-semibold text-slate-300">Jangkauan</span>
+          <input name="coverage" value="{{ '%.0f'|format(edit_provider.coverage) if edit_provider else '' }}" required min="0" max="100" type="number" placeholder="80" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+        <label class="block">
+          <span class="text-sm font-semibold text-slate-300">Sentimen</span>
+          <input name="sentiment" value="{{ '%.2f'|format(edit_provider.sentiment) if edit_provider else '' }}" required min="0" max="100" step="0.01" type="number" placeholder="25.56" class="mt-2 w-full rounded-xl border border-white/10 bg-slate-900 px-4 py-3 text-white outline-none focus:border-neon" />
+        </label>
+        <div class="flex items-end">
+          <button class="h-[50px] w-full whitespace-nowrap rounded-xl bg-neon px-5 text-sm font-extrabold text-slate-950 transition hover:bg-sky-300 lg:w-auto">
+            {{ "Simpan Perubahan" if edit_provider else "Tambah Provider" }}
+          </button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <section class="glass mt-6 overflow-hidden rounded-2xl">
+    <div class="flex flex-col gap-2 border-b border-white/10 p-6 sm:flex-row sm:items-center sm:justify-between">
+      <h2 class="text-xl font-extrabold">Tabel Provider</h2>
+      <p class="text-sm text-slate-400">Menampilkan {{ providers|length }} dari {{ total_providers }} provider.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[840px] text-left text-sm">
+        <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+          <tr>
+            <th class="px-5 py-4">No</th>
+            <th class="px-5 py-4">Provider</th>
+            <th class="px-5 py-4">Harga</th>
+            <th class="px-5 py-4">Kecepatan</th>
+            <th class="px-5 py-4">Stabilitas</th>
+            <th class="px-5 py-4">Layanan</th>
+            <th class="px-5 py-4">Jangkauan</th>
+            <th class="px-5 py-4">Sentimen</th>
+            <th class="px-5 py-4">Aksi</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/10">
+          {% for provider in providers %}
+            <tr class="hover:bg-white/5">
+              <td class="px-5 py-4 text-slate-400">{{ loop.index }}</td>
+              <td class="px-5 py-4 font-bold text-white">{{ provider.name }}</td>
+              <td class="px-5 py-4">{{ provider.price_idr|idr }}</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(provider.speed_mbps) }} Mbps</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(provider.stability) }}</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(provider.service) }}</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(provider.coverage) }}</td>
+              <td class="px-5 py-4">{{ "%.2f"|format(provider.sentiment) }}</td>
+              <td class="px-5 py-4">
+                <div class="flex gap-2">
+                  <a href="{{ url_for('katalog', edit=provider.id) }}" class="rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition hover:bg-white/15">Edit</a>
+                  <form method="post" action="{{ url_for('delete_provider', provider_id=provider.id) }}">
+                    <button class="rounded-lg bg-rose/10 px-3 py-2 text-xs font-bold text-rose transition hover:bg-rose/20" onclick="return confirm('Hapus provider ini?')">Hapus</button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="px-5 py-8 text-center text-slate-400">Tidak ada provider yang sesuai filter.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}

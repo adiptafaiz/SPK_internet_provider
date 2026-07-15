@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="id" class="scroll-smooth">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  {% block head_extra %}{% endblock %}
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ["Inter", "ui-sans-serif", "system-ui"],
+          },
+          colors: {
+            neon: "#38bdf8",
+            mint: "#34d399",
+            amber: "#fbbf24",
+            rose: "#fb7185",
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+
+    body {
+      min-height: 100vh;
+      background-color: #0b1120;
+    }
+
+    .glass {
+      background: #0f172a;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 1px 8px rgba(0, 0, 0, 0.18);
+    }
+
+    .soft-panel {
+      background: #1e293b;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+    }
+
+    input[type="range"] {
+      accent-color: #38bdf8;
+    }
+
+    input[type="number"] {
+      appearance: textfield;
+      -moz-appearance: textfield;
+    }
+
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button {
+      appearance: none;
+      -webkit-appearance: none;
+      margin: 0;
+    }
+
+    .nav-link {
+      border-radius: 0.75rem;
+      padding: 0.625rem 0.9rem;
+      transition: background-color 160ms ease, color 160ms ease;
+    }
+
+    .nav-link:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: white;
+    }
+  </style>
+</head>
+
+<body class="font-sans text-slate-100 antialiased">
+  <nav class="sticky top-0 z-50 border-b border-white/10 bg-slate-950/90 backdrop-blur-xl">
+    <div
+      class="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+      <a href="{{ url_for('home') }}" class="flex items-center gap-3">
+      </a>
+      <div class="flex flex-wrap gap-2 text-sm font-semibold text-slate-300">
+        <a class="nav-link" href="{{ url_for('home') }}">Home</a>
+        <a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a>
+        <a class="nav-link" href="{{ url_for('katalog') }}">Katalog</a>
+        <a class="nav-link" href="{{ url_for('sentimen') }}">Sentimen</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="mx-auto min-h-[calc(100vh-10rem)] w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="mb-6 grid gap-3">
+      {% for category, message in messages %}
+      <div
+        class="rounded-xl border px-4 py-3 text-sm font-semibold {{ 'border-rose/30 bg-rose/10 text-rose' if category == 'error' else 'border-mint/30 bg-mint/10 text-mint' }}">
+        {{ message }}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="border-t border-white/10 bg-slate-950">
+    <div
+      class="mx-auto flex max-w-7xl flex-col gap-2 px-4 py-6 text-sm text-slate-400 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
+    </div>
+  </footer>
+  {% block scripts %}{% endblock %}
+</body>
+
+</html>

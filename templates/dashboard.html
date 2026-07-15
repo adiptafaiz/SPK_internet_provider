@@ -1,0 +1,460 @@
+{% extends "layout.html" %}
+
+{% block head_extra %}
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+  <section class="glass rounded-2xl p-6 sm:p-8">
+    <div class="grid gap-6 lg:grid-cols-[1.25fr_0.75fr] lg:items-center">
+      <div>
+        <p class="text-sm font-bold uppercase text-neon">Dashboard </p>
+        <h1 class="mt-3 max-w-3xl text-3xl font-black leading-tight sm:text-5xl">
+          Ranking Provider Internet dengan MPE, SAW, dan KMKK
+        </h1>
+        <p class="mt-4 max-w-3xl text-base leading-7 text-slate-300">
+          Nilai tiap provider dihitung dari Harga, Kecepatan, Stabilitas, Layanan, Jangkauan, dan Sentimen. Bobot pakai MPE, skor pakai SAW,
+          koreksi pakai KMKK  `
+        </p>
+      </div>
+      <div class="rounded-2xl bg-slate-950 p-5 ring-1 ring-white/10">
+        <p class="text-sm text-slate-400">Rekomendasi terbaik saat ini</p>
+        <h2 class="mt-2 text-3xl font-extrabold text-white">{{ best.name }}</h2>
+        <div class="mt-5 grid grid-cols-2 gap-3 text-sm">
+          <div class="rounded-xl bg-white/5 p-4">
+            <p class="text-slate-400">Skor Akhir</p>
+            <p class="text-2xl font-bold text-neon">{{ "%.2f"|format(best.final_score * 100) }}</p>
+          </div>
+          <div class="rounded-xl bg-white/5 p-4">
+            <p class="text-slate-400">Faktor KMKK</p>
+            <p class="text-2xl font-bold text-mint">{{ "%.2f"|format(best.kmkk_factor) }}</p>
+          </div>
+        </div>
+        <p class="mt-4 text-sm text-slate-300">{{ best.kmkk_note }}</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="mt-6 rounded-2xl border border-white/10 bg-slate-900/60 px-5 py-4">
+    <div class="flex flex-col gap-3 text-sm text-slate-300 lg:flex-row lg:items-center lg:justify-between">
+      <p><span class="font-extrabold text-neon">MPE</span> menghitung bobot prioritas dari slider.</p>
+      <p><span class="font-extrabold text-amber">SAW</span> menormalisasi data dan membuat skor awal.</p>
+      <p><span class="font-extrabold text-mint">KMKK</span> mengoreksi skor jika ada kriteria yang lemah.</p>
+    </div>
+  </section>
+
+  <section class="mt-6 grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+    <form method="post" action="{{ url_for('dashboard') }}" class="glass rounded-2xl p-6">
+      <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 class="text-xl font-extrabold">Input Kepentingan Kriteria</h2>
+          <p class="mt-1 text-sm text-slate-400">Sesuaikan Prioritas Disini</p>
+        </div>
+        <button class="rounded-xl bg-neon px-5 py-3 text-sm font-extrabold text-slate-950 transition hover:bg-sky-300">
+          Hitung Ranking
+        </button>
+      </div>
+
+      <div class="mt-6 space-y-4">
+        {% for criterion in criteria %}
+          <label class="block rounded-xl bg-slate-950/60 p-4 ring-1 ring-white/10">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <span class="font-bold text-white">{{ criterion.name }}</span>
+                <p class="mt-1 text-sm text-slate-400">{{ criterion.description }}</p>
+                <p class="mt-1 text-xs font-semibold uppercase text-slate-500">
+                  {{ "Benefit" if criterion.ctype == "benefit" else "Cost" }} | Bobot MPE:
+                  {{ "%.2f"|format(weights[criterion.code] * 100) }}%
+                </p>
+              </div>
+              <output class="min-w-10 rounded-lg bg-neon/10 px-3 py-2 text-center font-extrabold text-neon" id="out-{{ criterion.code }}">
+                {{ importance[criterion.code] }}
+              </output>
+            </div>
+            <input
+              class="mt-4 w-full"
+              type="range"
+              name="{{ criterion.code }}"
+              min="1"
+              max="5"
+              value="{{ importance[criterion.code] }}"
+              oninput="document.getElementById('out-{{ criterion.code }}').value = this.value"
+            />
+          </label>
+        {% endfor %}
+      </div>
+    </form>
+
+    <div class="grid gap-6">
+      <section class="glass rounded-2xl p-6">
+        <h2 class="text-xl font-extrabold">Grafik Skor Provider</h2>
+        <div class="mt-4 h-80">
+          <canvas id="rankingChart"></canvas>
+        </div>
+      </section>
+      <section class="glass rounded-2xl p-6">
+        <h2 class="text-xl font-extrabold">Distribusi Bobot MPE</h2>
+        <div class="mt-4 h-72">
+          <canvas id="weightChart"></canvas>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="mt-6">
+    <div class="mb-4">
+      <h2 class="text-2xl font-extrabold text-white">Proses Perhitungan SPK</h2>
+      <p class="mt-1 text-sm text-slate-400">Alur perhitungan dari bobot kriteria sampai ranking akhir provider.</p>
+    </div>
+
+    <div class="glass rounded-2xl p-5">
+      <div class="grid gap-3 md:grid-cols-5">
+        {% set flow_steps = [
+          ("1", "Bobot MPE", "Prioritas kriteria", "text-neon", "bg-neon/10"),
+          ("2", "Normalisasi SAW", "Skala nilai", "text-amber", "bg-amber/10"),
+          ("3", "Perhitungan SAW", "Nilai preferensi", "text-amber", "bg-amber/10"),
+          ("4", "KMKK", "Koreksi penalti", "text-mint", "bg-mint/10"),
+          ("5", "Ranking", "Urutan akhir", "text-neon", "bg-neon/10")
+        ] %}
+        {% for number, title, subtitle, text_color, bg_color in flow_steps %}
+          <div class="relative rounded-xl border border-white/10 bg-slate-950/60 p-4">
+            <div class="flex items-center gap-3">
+              <span class="inline-flex h-9 w-9 items-center justify-center rounded-full {{ bg_color }} {{ text_color }} font-extrabold">
+                {{ number }}
+              </span>
+              <div>
+                <p class="font-extrabold text-white">{{ title }}</p>
+                <p class="text-xs text-slate-500">{{ subtitle }}</p>
+              </div>
+            </div>
+            {% if not loop.last %}
+              <div class="pointer-events-none absolute -bottom-3 left-1/2 text-slate-500 md:-right-4 md:bottom-auto md:left-auto md:top-1/2 md:-translate-y-1/2">
+                <svg class="h-5 w-5 rotate-90 md:rotate-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fill-rule="evenodd" d="M3 10a1 1 0 0 1 1-1h9.586l-3.293-3.293a1 1 0 1 1 1.414-1.414l5 5a1 1 0 0 1 0 1.414l-5 5a1 1 0 0 1-1.414-1.414L13.586 11H4a1 1 0 0 1-1-1Z" clip-rule="evenodd" />
+                </svg>
+              </div>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-xl bg-slate-950/70 p-4 ring-1 ring-white/10">
+          <p class="text-xs uppercase text-slate-500">Jumlah Provider</p>
+          <p class="mt-2 text-2xl font-extrabold text-white">{{ rankings|length }}</p>
+        </div>
+        <div class="rounded-xl bg-slate-950/70 p-4 ring-1 ring-white/10">
+          <p class="text-xs uppercase text-slate-500">Jumlah Kriteria</p>
+          <p class="mt-2 text-2xl font-extrabold text-white">{{ criteria|length }}</p>
+        </div>
+        <div class="rounded-xl bg-slate-950/70 p-4 ring-1 ring-white/10">
+          <p class="text-xs uppercase text-slate-500">Bobot Total</p>
+          <p class="mt-2 text-2xl font-extrabold text-neon">{{ "%.2f"|format(weights.values()|sum * 100) }}%</p>
+        </div>
+        <div class="rounded-xl bg-slate-950/70 p-4 ring-1 ring-white/10">
+          <p class="text-xs uppercase text-slate-500">Metode</p>
+          <p class="mt-2 text-2xl font-extrabold text-mint">MPE → SAW → KMKK</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid gap-6 xl:grid-cols-2">
+      <section class="glass overflow-hidden rounded-2xl">
+        <div class="border-b border-white/10 p-5">
+          <h3 class="text-lg font-extrabold text-white">Hasil Pembobotan MPE</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[520px] text-left text-sm">
+            <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+              <tr>
+                <th class="px-5 py-4">Kriteria</th>
+                <th class="px-5 py-4 text-center">Nilai Slider</th>
+                <th class="px-5 py-4 text-right">Bobot MPE (%)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10">
+              {% for criterion in criteria %}
+                <tr class="transition hover:bg-white/5">
+                  <td class="px-5 py-4 font-bold text-white">{{ criterion.name }}</td>
+                  <td class="px-5 py-4 text-center">{{ importance[criterion.code] }}</td>
+                  <td class="px-5 py-4 text-right font-semibold text-neon">{{ "%.2f"|format(weights[criterion.code] * 100) }}%</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="border-t border-white/10 p-5 text-sm text-slate-400">
+          <p class="font-mono text-neon">Wi = Xi² / ΣXi²</p>
+          <p class="mt-2">Bobot dihitung dari nilai slider yang diberikan pengguna menggunakan metode MPE dengan pemangkatan prioritas.</p>
+        </div>
+      </section>
+
+      <section class="glass overflow-hidden rounded-2xl">
+        <div class="border-b border-white/10 p-5">
+          <h3 class="text-lg font-extrabold text-white">Ranking Akhir</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[520px] text-left text-sm">
+            <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+              <tr>
+                <th class="px-5 py-4">Rank</th>
+                <th class="px-5 py-4">Provider</th>
+                <th class="px-5 py-4 text-right">Skor Akhir</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10">
+              {% for item in rankings %}
+                <tr class="transition hover:bg-white/5">
+                  <td class="px-5 py-4">
+                    <span class="inline-flex h-7 w-7 items-center justify-center rounded-full {{ 'bg-amber text-slate-950' if loop.index == 1 else 'bg-slate-800 text-slate-300' }} text-xs font-extrabold">
+                      {{ loop.index }}
+                    </span>
+                  </td>
+                  <td class="px-5 py-4 font-bold text-white">{{ item.name }}</td>
+                  <td class="px-5 py-4 text-right font-semibold text-neon">{{ "%.2f"|format(item.final_score * 100) }}%</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="border-t border-white/10 p-5 text-sm text-slate-400">
+          <p>Ranking akhir diurutkan dari nilai akhir tertinggi setelah koreksi KMKK.</p>
+        </div>
+      </section>
+
+      <section class="glass overflow-hidden rounded-2xl xl:col-span-2">
+        <div class="border-b border-white/10 p-5">
+          <h3 class="text-lg font-extrabold text-white">Normalisasi SAW</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[980px] text-left text-sm">
+            <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+              <tr>
+                <th class="px-5 py-4">Provider</th>
+                <th class="px-5 py-4">Harga</th>
+                <th class="px-5 py-4">Kecepatan</th>
+                <th class="px-5 py-4">Stabilitas</th>
+                <th class="px-5 py-4">Layanan</th>
+                <th class="px-5 py-4">Jangkauan</th>
+                <th class="px-5 py-4">Sentimen</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10">
+              {% for item in rankings %}
+                <tr class="transition hover:bg-white/5">
+                  <td class="px-5 py-4 font-bold text-white">{{ item.name }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.price_idr) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.speed_mbps) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.stability) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.service) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.coverage) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.sentiment) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="grid gap-3 border-t border-white/10 p-5 text-sm text-slate-400 sm:grid-cols-2">
+          <div>
+            <p class="font-semibold text-white">Benefit</p>
+            <p class="mt-1 font-mono text-amber">rij = xij / max(xj)</p>
+          </div>
+          <div>
+            <p class="font-semibold text-white">Cost</p>
+            <p class="mt-1 font-mono text-amber">rij = min(xj) / xij</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="glass overflow-hidden rounded-2xl xl:col-span-2">
+        <div class="border-b border-white/10 p-5">
+          <h3 class="text-lg font-extrabold text-white">Perhitungan Nilai SAW</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[1120px] text-left text-sm">
+            <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+              <tr>
+                <th class="px-5 py-4">Provider</th>
+                <th class="px-5 py-4">Harga×Bobot</th>
+                <th class="px-5 py-4">Speed×Bobot</th>
+                <th class="px-5 py-4">Stabilitas×Bobot</th>
+                <th class="px-5 py-4">Layanan×Bobot</th>
+                <th class="px-5 py-4">Jangkauan×Bobot</th>
+                <th class="px-5 py-4">Sentimen×Bobot</th>
+                <th class="px-5 py-4">Total SAW</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10">
+              {% for item in rankings %}
+                <tr class="transition hover:bg-white/5">
+                  <td class="px-5 py-4 font-bold text-white">{{ item.name }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.price_idr * weights.price_idr) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.speed_mbps * weights.speed_mbps) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.stability * weights.stability) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.service * weights.service) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.coverage * weights.coverage) }}</td>
+                  <td class="px-5 py-4">{{ "%.3f"|format(item.normalized.sentiment * weights.sentiment) }}</td>
+                  <td class="px-5 py-4 font-extrabold text-amber">{{ "%.3f"|format(item.saw_score) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="border-t border-white/10 p-5 text-sm text-slate-400">
+          <p class="font-mono text-amber">Vi = Σ(wj × rij)</p>
+          <p class="mt-2">Setiap nilai normalisasi dikalikan bobot kriterianya, lalu dijumlahkan menjadi nilai preferensi SAW.</p>
+        </div>
+      </section>
+
+      <section class="glass overflow-hidden rounded-2xl xl:col-span-2">
+        <div class="border-b border-white/10 p-5">
+          <h3 class="text-lg font-extrabold text-white">Koreksi KMKK</h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full min-w-[720px] text-left text-sm">
+            <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+              <tr>
+                <th class="px-5 py-4">Provider</th>
+                <th class="px-5 py-4 text-right">Nilai SAW</th>
+                <th class="px-5 py-4 text-center">Faktor KMKK</th>
+                <th class="px-5 py-4 text-right">Penalti</th>
+                <th class="px-5 py-4 text-right">Nilai Akhir</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-white/10">
+              {% for item in rankings %}
+                <tr class="transition hover:bg-white/5">
+                  <td class="px-5 py-4 font-bold text-white">{{ item.name }}</td>
+                  <td class="px-5 py-4 text-right">{{ "%.3f"|format(item.saw_score) }}</td>
+                  <td class="px-5 py-4 text-center">
+                    <span class="rounded-full bg-mint/10 px-3 py-1 font-semibold text-mint">
+                      {{ "%.2f"|format(item.kmkk_factor) }}
+                    </span>
+                  </td>
+                  <td class="px-5 py-4 text-right text-rose">{{ "%.2f"|format((1 - item.kmkk_factor) * 100) }}%</td>
+                  <td class="px-5 py-4 text-right font-extrabold text-neon">{{ "%.3f"|format(item.final_score) }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="border-t border-white/10 p-5 text-sm text-slate-400">
+          <p class="font-mono text-mint">Final = SAW × KMKK</p>
+          <p class="mt-2">Faktor KMKK mengoreksi nilai SAW sebelum menjadi nilai akhir.</p>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section class="glass mt-6 overflow-hidden rounded-2xl">
+    <div class="border-b border-white/10 p-6">
+      <h2 class="text-xl font-extrabold">Tabel Hasil Ranking</h2>
+      <p class="mt-1 text-sm text-slate-400">Skor akhir = SAW x KMKK.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full min-w-[980px] text-left text-sm">
+        <thead class="bg-slate-950/80 text-xs uppercase text-slate-400">
+          <tr>
+            <th class="px-5 py-4">Peringkat</th>
+            <th class="px-5 py-4">Provider</th>
+            <th class="px-5 py-4">Harga</th>
+            <th class="px-5 py-4">Kecepatan</th>
+            <th class="px-5 py-4">Stabilitas</th>
+            <th class="px-5 py-4">Layanan</th>
+            <th class="px-5 py-4">Jangkauan</th>
+            <th class="px-5 py-4">Sentimen</th>
+            <th class="px-5 py-4">SAW</th>
+            <th class="px-5 py-4">KMKK</th>
+            <th class="px-5 py-4">Skor Akhir</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-white/10">
+          {% for item in rankings %}
+            <tr class="transition hover:bg-white/5">
+              <td class="px-5 py-4">
+                <span class="inline-flex h-8 w-8 items-center justify-center rounded-full {{ 'bg-amber text-slate-950' if loop.index == 1 else 'bg-slate-800 text-slate-300' }} font-extrabold">
+                  {{ loop.index }}
+                </span>
+              </td>
+              <td class="px-5 py-4 font-bold text-white">{{ item.name }}</td>
+              <td class="px-5 py-4">{{ item.price_idr|idr }}</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(item.speed_mbps) }} Mbps</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(item.stability) }}</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(item.service) }}</td>
+              <td class="px-5 py-4">{{ "%.0f"|format(item.coverage) }}</td>
+              <td class="px-5 py-4">{{ "%.2f"|format(provider_lookup[item.name].sentiment) }}</td>
+              <td class="px-5 py-4">{{ "%.2f"|format(item.saw_score * 100) }}</td>
+              <td class="px-5 py-4">
+                <span class="rounded-full bg-mint/10 px-3 py-1 font-semibold text-mint">
+                  {{ "%.2f"|format(item.kmkk_factor) }}
+                </span>
+              </td>
+              <td class="px-5 py-4 font-extrabold text-neon">{{ "%.2f"|format(item.final_score * 100) }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  <script>
+    const payload = {{ chart_payload|safe }};
+
+    Chart.defaults.color = "#cbd5e1";
+    Chart.defaults.borderColor = "rgba(148, 163, 184, 0.18)";
+
+    new Chart(document.getElementById("rankingChart"), {
+      type: "bar",
+      data: {
+        labels: payload.labels,
+        datasets: [
+          {
+            label: "Skor Akhir KMKK",
+            data: payload.scores,
+            borderRadius: 12,
+            backgroundColor: "rgba(56, 189, 248, 0.78)",
+          },
+          {
+            label: "Skor SAW",
+            data: payload.sawScores,
+            borderRadius: 12,
+            backgroundColor: "rgba(251, 191, 36, 0.64)",
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { beginAtZero: true, max: 100 },
+        },
+        plugins: {
+          legend: { labels: { usePointStyle: true } },
+        },
+      },
+    });
+
+    new Chart(document.getElementById("weightChart"), {
+      type: "doughnut",
+      data: {
+        labels: payload.criteria,
+        datasets: [
+          {
+            data: payload.weights,
+            backgroundColor: ["#38bdf8", "#34d399", "#fbbf24", "#fb7185", "#a78bfa", "#22d3ee"],
+            borderWidth: 0,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: "bottom", labels: { boxWidth: 12, usePointStyle: true } },
+        },
+      },
+    });
+  </script>
+{% endblock %}

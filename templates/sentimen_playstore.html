@@ -1,0 +1,316 @@
+{# templates/sentimen_playstore.html #}
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8 max-w-5xl">
+
+  {# ── Header ─────────────────────────────────────────────────────────── #}
+  <div class="mb-8">
+    <h1 class="text-2xl font-bold text-white mb-1">Analisis Sentimen</h1>
+    <p class="text-slate-400 text-sm">
+      Ulasan diambil langsung dari <strong class="text-white">Google Play Store</strong>
+      (terbaru), lalu diklasifikasi menggunakan model sentimen IndoBERT.
+    </p>
+  </div>
+
+  {# ── Panel Kontrol ───────────────────────────────────────────────────── #}
+  <div class="flex flex-wrap items-center gap-4 mb-8 p-4 rounded-xl bg-slate-800/60 border border-slate-700">
+
+    {# Jumlah ulasan #}
+    <div class="flex items-center gap-2">
+      <label class="text-sm text-slate-400 whitespace-nowrap">Ulasan per provider:</label>
+      <select id="sel-count"
+        class="bg-slate-700 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5 focus:ring-emerald-500 focus:border-emerald-500">
+        <option value="20" selected>20 (demo)</option>
+        <option value="50">50 (cepat)</option>
+        <option value="100">100</option>
+        <option value="150">150</option>
+        <option value="200">200 (lengkap)</option>
+      </select>
+    </div>
+
+    {# Tombol refresh #}
+    <button id="btn-refresh" onclick="refreshSentimen()" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500
+             active:scale-95 text-white font-semibold px-5 py-2 rounded-lg transition-all">
+      <svg id="icon-spin" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+        stroke="currentColor" stroke-width="2.5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 4v-5h-.581m0
+             0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+      <span id="btn-label">Refresh Sentimen</span>
+    </button>
+
+    {# Progress text #}
+    <span id="progress-text" class="text-sm text-slate-400 hidden">
+      Mengambil ulasan... ini bisa beberapa detik
+    </span>
+  </div>
+
+  {# ── Status / error banner ────────────────────────────────────────────── #}
+  <div id="banner" class="hidden mb-6 p-3 rounded-lg text-sm font-medium"></div>
+
+  {# ── Metadata hasil ───────────────────────────────────────────────────── #}
+  <div id="meta-panel" class="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div class="bg-slate-800 rounded-lg p-3 text-center">
+      <div class="text-xs text-slate-400 mb-0.5">Metode</div>
+      <div id="meta-method" class="text-white font-semibold text-sm">—</div>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3 text-center">
+      <div class="text-xs text-slate-400 mb-0.5">Durasi</div>
+      <div id="meta-duration" class="text-white font-semibold text-sm">—</div>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3 text-center">
+      <div class="text-xs text-slate-400 mb-0.5">Provider Updated</div>
+      <div id="meta-updated" class="text-white font-semibold text-sm">—</div>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3 text-center">
+      <div class="text-xs text-slate-400 mb-0.5">Sumber</div>
+      <div class="text-white font-semibold text-sm">Google Play</div>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3 text-center">
+      <div class="flex items-center justify-center gap-1 text-xs text-slate-400 mb-0.5">
+        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm.75-12a.75.75 0 0 0-1.5 0v4c0 .199.079.39.22.53l2.25 2.25a.75.75 0 1 0 1.06-1.06l-2.03-2.03V6Z" clip-rule="evenodd" />
+        </svg>
+        Terakhir Diperbarui
+      </div>
+      <div id="meta-last-updated" class="text-white font-semibold text-xs leading-relaxed">
+        {{ last_sentiment_updated or "Belum pernah diperbarui" }}
+      </div>
+    </div>
+    <div class="bg-slate-800 rounded-lg p-3 text-center">
+      <div class="flex items-center justify-center gap-1 text-xs text-slate-400 mb-0.5">
+        <svg class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <path d="M2.5 4A1.5 1.5 0 0 1 4 2.5h12A1.5 1.5 0 0 1 17.5 4v12A1.5 1.5 0 0 1 16 17.5H4A1.5 1.5 0 0 1 2.5 16V4Zm3 1.75a.75.75 0 0 0 0 1.5h9a.75.75 0 0 0 0-1.5h-9Zm0 3.5a.75.75 0 0 0 0 1.5h9a.75.75 0 0 0 0-1.5h-9Zm0 3.5a.75.75 0 0 0 0 1.5h5a.75.75 0 0 0 0-1.5h-5Z" />
+        </svg>
+        Jumlah Ulasan
+      </div>
+      <div id="meta-review-count" class="text-white font-semibold text-xs leading-relaxed">—</div>
+    </div>
+  </div>
+
+  {# ── Tabel provider ───────────────────────────────────────────────────── #}
+  <div class="overflow-hidden rounded-xl border border-slate-700">
+    <table class="w-full text-sm">
+      <thead class="bg-slate-800 text-slate-400 uppercase text-xs tracking-wider">
+        <tr>
+          <th class="px-4 py-3 text-left">Provider</th>
+          <th class="px-4 py-3 text-right">Skor</th>
+          <th class="px-4 py-3 text-left w-52">Distribusi Ulasan</th>
+          <th class="px-4 py-3 text-left">Detail</th>
+          <th class="px-4 py-3 text-left">Status</th>
+        </tr>
+      </thead>
+      <tbody id="tabel-body" class="divide-y divide-slate-700/50">
+        {% for provider in providers %}
+        <tr data-provider="{{ provider.name }}"
+          class="bg-slate-900 hover:bg-slate-800/40 transition-colors duration-300">
+          <td class="px-4 py-3 font-medium text-white">{{ provider.name }}</td>
+          <td class="px-4 py-3 text-right">
+            <span class="score-cell font-mono font-bold text-lg text-emerald-400">
+              {{ "%.2f"|format(provider.sentiment) }}
+            </span>
+          </td>
+          <td class="px-4 py-3">
+            <div class="dist-bar flex h-3 rounded-full overflow-hidden bg-slate-700 gap-px"></div>
+          </td>
+          <td class="px-4 py-3 text-slate-400 text-xs">
+            <span class="dist-detail">—</span>
+          </td>
+          <td class="px-4 py-3">
+            <span class="row-status text-xs text-slate-500">Belum diperbarui</span>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {# ── Legenda ──────────────────────────────────────────────────────────── #}
+  <div class="mt-3 flex items-center gap-5 text-xs text-slate-500">
+    <span class="flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span>Positif (IndoBERT)
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded-sm bg-amber inline-block"></span>Netral (IndoBERT)
+    </span>
+    <span class="flex items-center gap-1.5">
+      <span class="w-3 h-3 rounded-sm bg-rose inline-block"></span>Negatif (IndoBERT)
+    </span>
+  </div>
+
+  {# ── Preview ulasan terbaru (muncul setelah refresh) ─────────────────── #}
+  <div id="review-preview" class="hidden mt-8">
+    <h2 class="text-lg font-semibold text-white mb-4">
+      Sampel Ulasan Terbaru
+      <span class="text-sm font-normal text-slate-400">(5 per provider)</span>
+    </h2>
+    <div id="review-cards" class="space-y-4"></div>
+  </div>
+
+</div>
+{% endblock %}
+
+
+{% block scripts %}
+<script>
+  async function refreshSentimen() {
+    const btn = document.getElementById("btn-refresh");
+    const btnLabel = document.getElementById("btn-label");
+    const icon = document.getElementById("icon-spin");
+    const progress = document.getElementById("progress-text");
+    const banner = document.getElementById("banner");
+    const count = document.getElementById("sel-count").value;
+
+    // Loading
+    btn.disabled = true;
+    btn.classList.replace("bg-emerald-600", "bg-slate-600");
+    btnLabel.textContent = "Mengambil ulasan...";
+    icon.classList.add("animate-spin");
+    progress.classList.remove("hidden");
+    banner.className = "hidden";
+
+    try {
+      const resp = await fetch("/api/refresh-sentimen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: parseInt(count) }),
+      });
+      const data = await resp.json();
+
+      if (data.status !== "success") throw new Error(data.message || "Gagal.");
+
+      // Update tiap baris
+      document.querySelectorAll("#tabel-body tr[data-provider]").forEach(row => {
+        const name = row.dataset.provider;
+        const score = data.scores[name];
+        const detail = data.details[name];
+        const err = data.errors?.[name];
+
+        if (err) {
+          row.querySelector(".row-status").innerHTML =
+            `<span class="text-rose">Gagal: ${err}</span>`;
+          return;
+        }
+        if (score === undefined) return;
+
+        // Skor (animasi counting up)
+        const scoreEl = row.querySelector(".score-cell");
+        animateCount(scoreEl, parseFloat(scoreEl.textContent), score, 800);
+
+        // Distribusi bar
+        if (detail) {
+          const t = detail.total || 1;
+          const pPos = (detail.positif / t * 100).toFixed(1);
+          const pNeu = (detail.netral / t * 100).toFixed(1);
+          const pNeg = (detail.negatif / t * 100).toFixed(1);
+          const stars = detail.stars || {};
+          row.querySelector(".dist-bar").innerHTML = `
+          <div class="bg-emerald-500 h-full transition-all duration-700" style="width:${pPos}%"
+               title="Positif ${pPos}%"></div>
+          <div class="bg-amber h-full transition-all duration-700" style="width:${pNeu}%"
+               title="Netral ${pNeu}%"></div>
+          <div class="bg-rose h-full transition-all duration-700" style="width:${pNeg}%"
+               title="Negatif ${pNeg}%"></div>`;
+          row.querySelector(".dist-detail").textContent =
+            `IndoBERT: +${detail.positif} / ~${detail.netral} / -${detail.negatif} | Rating: ★5 ${stars[5] || 0}, ★4 ${stars[4] || 0}, ★3 ${stars[3] || 0}, ★2 ${stars[2] || 0}, ★1 ${stars[1] || 0}`;
+        }
+
+        row.querySelector(".row-status").innerHTML =
+          `<span class="text-emerald-400">✓ Diperbarui</span>`;
+
+        // Flash highlight
+        row.style.backgroundColor = "rgba(16,185,129,0.08)";
+        setTimeout(() => row.style.backgroundColor = "", 1500);
+      });
+
+      // Metadata
+      document.getElementById("meta-method").textContent =
+        data.method === "indobert" ? "IndoBERT" : "Bintang + Leksikon";
+      document.getElementById("meta-method").title = data.model || "";
+      document.getElementById("meta-duration").textContent = `${data.duration}s`;
+      document.getElementById("meta-updated").textContent = `${data.updated.length} provider`;
+      document.getElementById("meta-last-updated").textContent = data.last_updated || "Belum pernah diperbarui";
+      document.getElementById("meta-review-count").textContent = data.review_count_label || `${data.review_count || 0} Review`;
+      document.getElementById("meta-panel").classList.remove("hidden");
+
+      // Preview ulasan
+      renderReviews(data);
+
+      // Banner sukses
+      const errCount = Object.keys(data.errors || {}).length;
+      banner.className = "mb-6 p-3 rounded-lg text-sm font-medium bg-emerald-900/50 text-emerald-300 border border-emerald-700";
+      banner.textContent = errCount > 0
+        ? `✓ ${data.updated.length} provider diperbarui. ${errCount} provider gagal (lihat kolom Status).`
+        : `✓ Semua provider berhasil diperbarui dari Google Play Store.`;
+      banner.classList.remove("hidden");
+
+    } catch (err) {
+      banner.className = "mb-6 p-3 rounded-lg text-sm font-medium bg-rose/10 text-rose border border-rose/40";
+      banner.textContent = `✗ ${err.message}`;
+      banner.classList.remove("hidden");
+    } finally {
+      btn.disabled = false;
+      btn.classList.replace("bg-slate-600", "bg-emerald-600");
+      btnLabel.textContent = "Refresh Sentimen";
+      icon.classList.remove("animate-spin");
+      progress.classList.add("hidden");
+    }
+  }
+
+  // ── Animasi angka naik/turun ──────────────────────────────────────────────
+  function animateCount(el, from, to, duration) {
+    const start = performance.now();
+    function step(now) {
+      const t = Math.min((now - start) / duration, 1);
+      const val = from + (to - from) * t;
+      el.textContent = val.toFixed(2);
+      if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+
+  // ── Preview ulasan ────────────────────────────────────────────────────────
+  function renderReviews(data) {
+    const container = document.getElementById("review-cards");
+    container.innerHTML = "";
+
+    for (const [provider, reviews] of Object.entries(data.reviews || {})) {
+      if (!reviews.length) continue;
+      const sample = reviews.slice(0, 5);
+
+      const card = document.createElement("div");
+      card.className = "bg-slate-800 rounded-xl border border-slate-700 overflow-hidden";
+      card.innerHTML = `
+      <div class="px-4 py-2.5 bg-slate-700/50 font-semibold text-white text-sm">${escapeHtml(provider)}</div>
+      <div class="divide-y divide-slate-700/50">
+        ${sample.map(r => `
+          <div class="px-4 py-2.5 flex items-start gap-3">
+            <span class="mt-0.5 shrink-0 text-xs px-1.5 py-0.5 rounded font-medium
+              ${r.label === 'positif' ? 'bg-emerald-900/60 text-emerald-300' :
+          r.label === 'negatif' ? 'bg-rose/10 text-rose' :
+            'bg-amber/10 text-amber'}">
+              ${'★'.repeat(r.star)}
+            </span>
+            <div class="min-w-0">
+              <p class="text-slate-300 text-xs leading-relaxed">${escapeHtml(r.text || 'kosong')}</p>
+              <p class="mt-1 text-[11px] text-slate-500">${escapeHtml(r.label)}${r.date ? ` · ${escapeHtml(r.date)}` : ''}</p>
+            </div>
+          </div>`).join('')}
+      </div>`;
+      container.appendChild(card);
+    }
+
+    document.getElementById("review-preview").classList.remove("hidden");
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+</script>
+{% endblock %}
